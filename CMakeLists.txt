@@ -53,13 +53,13 @@ if(APPLE)
         COMMENT "Assembling OFX bundle"
     )
 
-    # Uncomment to auto-install after build:
-    # add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-    #     COMMAND ${CMAKE_COMMAND} -E copy_directory
-    #         "${CMAKE_BINARY_DIR}/${PROJECT_NAME}.ofx.bundle"
-    #         "/Library/OFX/Plugins/${PROJECT_NAME}.ofx.bundle"
-    #     COMMENT "Installing to /Library/OFX/Plugins"
-    # )
+    # Auto-install to user's local directory:
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_BINARY_DIR}/${PROJECT_NAME}.ofx.bundle"
+            "$ENV{HOME}/Library/OFX/Plugins/${PROJECT_NAME}.ofx.bundle"
+        COMMENT "Installing to ~/Library/OFX/Plugins"
+    )
 
 elseif(UNIX AND NOT APPLE)
     set_target_properties(${PROJECT_NAME} PROPERTIES PREFIX "" SUFFIX ".ofx")
