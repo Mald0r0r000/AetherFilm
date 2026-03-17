@@ -151,10 +151,11 @@ inline float softClip(float x, float threshold = 1.5f) {
 }
 
 inline float3 applyPrinterPoints(float3 c, float ppR, float ppG, float ppB) {
-    // Reduced from 0.05 to 0.02 for finer control (≈1/10 stop per point)
-    float rGain = exp2((ppR - 25.0f) * 0.02f);
-    float gGain = exp2((ppG - 25.0f) * 0.02f);
-    float bGain = exp2((ppB - 25.0f) * 0.02f);
+    // Normalized: 50 = neutral (gain 1.0), range 0-100
+    // 0 = -1 stop, 100 = +1 stop
+    float rGain = exp2((ppR - 50.0f) * 0.02f);
+    float gGain = exp2((ppG - 50.0f) * 0.02f);
+    float bGain = exp2((ppB - 50.0f) * 0.02f);
     return float3(c.r * rGain, c.g * gGain, c.b * bGain);
 }
 

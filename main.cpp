@@ -27,6 +27,8 @@ void AetherFilmPluginFactory::describe(OFX::ImageEffectDescriptor &desc)
     
     // Advertise Metal render support - must be in describe(), not describeInContext
     desc.setSupportsMetalRender(true);
+    // Required for GPU acceleration in some hosts
+    desc.setNoSpatialAwareness(true);
 }
 
 void AetherFilmPluginFactory::describeInContext(OFX::ImageEffectDescriptor &desc,
@@ -134,8 +136,8 @@ void AetherFilmPluginFactory::describeInContext(OFX::ImageEffectDescriptor &desc
         auto mkPP = [&](const char *name, const char *label) {
             auto *p = desc.defineDoubleParam(name);
             p->setLabel(label);
-            p->setRange(0.0, 50.0); p->setDisplayRange(0.0, 50.0);
-            p->setDefault(25.0); p->setParent(*g);
+            p->setRange(0.0, 100.0); p->setDisplayRange(0.0, 100.0);
+            p->setDefault(50.0); p->setParent(*g);
         };
         mkPP(kParamPrinterR, "Red printer points");
         mkPP(kParamPrinterG, "Green printer points");

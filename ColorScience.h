@@ -206,14 +206,15 @@ inline float3 applyBleachBypass(float3 c, float strength)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Printer Points
-// 25 = neutral. Each unit ≈ 1/6 stop of coloured printer light (reduced for finer control).
+// Normalized: 50 = neutral (gain 1.0), range 0-100.
+// Each point = 0.02 stop. 50 points = 1 stop.
 // ─────────────────────────────────────────────────────────────────────────────
 inline float3 applyPrinterPoints(float3 c, float ppR, float ppG, float ppB)
 {
     // Convert printer points to exposure multiplier
-    // Reduced from 0.05 to 0.02 for finer control (≈1/10 stop per point)
+    // 50 = neutral (gain 1.0), 0 = -1 stop, 100 = +1 stop
     auto ppToGain = [](float pp) -> float {
-        return std::pow(2.0f, (pp - 25.0f) * 0.02f);
+        return std::pow(2.0f, (pp - 50.0f) * 0.02f);
     };
     return {
         c.r * ppToGain(ppR),
