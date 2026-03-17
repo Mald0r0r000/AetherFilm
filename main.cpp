@@ -8,12 +8,14 @@ void AetherFilmPluginFactory::describe(OFX::ImageEffectDescriptor &desc)
     desc.setLabel("AetherFilm");
     desc.setPluginGrouping("Aether");
     desc.setPluginDescription(
-        "Open-source film emulation — negative stock, print stock,\n"
-        "printer points, push/pull, bleach bypass, halation.\n"
+        "Open-source film emulation — negative stock, print stock, "
+        "printer points, push/pull, bleach bypass, halation. "
         "github.com/aether/AetherFilmOFX");
 
     desc.addSupportedContext(OFX::eContextFilter);
     desc.addSupportedContext(OFX::eContextGeneral);
+    desc.addSupportedBitDepth(OFX::eBitDepthUByte);
+    desc.addSupportedBitDepth(OFX::eBitDepthUShort);
     desc.addSupportedBitDepth(OFX::eBitDepthFloat);
     desc.setSingleInstance(false);
     desc.setHostFrameThreading(false);
@@ -30,14 +32,12 @@ void AetherFilmPluginFactory::describeInContext(OFX::ImageEffectDescriptor &desc
     // ── Clips ──────────────────────────────────────────────────────────────
     OFX::ClipDescriptor *src = desc.defineClip(kOfxImageEffectSimpleSourceClipName);
     src->addSupportedComponent(OFX::ePixelComponentRGBA);
-    src->addSupportedComponent(OFX::ePixelComponentRGB);
     src->setTemporalClipAccess(false);
     src->setSupportsTiles(true);
     src->setIsMask(false);
 
     OFX::ClipDescriptor *dst = desc.defineClip(kOfxImageEffectOutputClipName);
     dst->addSupportedComponent(OFX::ePixelComponentRGBA);
-    dst->addSupportedComponent(OFX::ePixelComponentRGB);
     dst->setSupportsTiles(true);
 
     // ── Input group ────────────────────────────────────────────────────────
@@ -203,6 +203,6 @@ OFX::ImageEffect *AetherFilmPluginFactory::createInstance(OfxImageEffectHandle h
 
 void OFX::Plugin::getPluginIDs(OFX::PluginFactoryArray &ids)
 {
-    static AetherFilmPluginFactory p("com.aether.filmofx", 1, 0);
+    static AetherFilmPluginFactory p("com.maldoror.aetherfilm", 1, 0);
     ids.push_back(&p);
 }
