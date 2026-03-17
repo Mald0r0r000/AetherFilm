@@ -29,6 +29,9 @@ void AetherFilmPluginFactory::describe(OFX::ImageEffectDescriptor &desc)
 void AetherFilmPluginFactory::describeInContext(OFX::ImageEffectDescriptor &desc,
                                                 OFX::ContextEnum /*ctx*/)
 {
+    // Advertise Metal render support
+    desc.setSupportsMetalRender(true);
+    
     // ── Clips ──────────────────────────────────────────────────────────────
     OFX::ClipDescriptor *src = desc.defineClip(kOfxImageEffectSimpleSourceClipName);
     src->addSupportedComponent(OFX::ePixelComponentRGBA);

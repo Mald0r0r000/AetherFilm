@@ -93,13 +93,18 @@ struct HDParams {
 // toe < 0.5 < shoulder, gamma controls mid-slope
 inline float hdCurve(float x, float toe, float shoulder, float gamma)
 {
-    // Lift x into log-exposure space (x is assumed linear 0..~16)
-    // We work in a normalised log space here
-    float logX = std::log10(std::max(x, 1e-6f));
-    // Map to [0,1] density via tanh-based S-curve
-    float norm = (logX + 2.0f) / 3.5f; // normalise roughly for film range
+    // Convert to log2 stops relative to middle grey (0.18)
+    float stops = std::log2(std::max(x, 1e-6f) / 0.18f);
+
+    // Map stops to a normalized input domain for the sigmoid
+    // In a real negative, -4 stops = toe, +6 stops = shoulder.
+    // Middle grey (0 stops) should sit a bit below the midpoint. 
+    float norm = (stops + 4.5f) / 10.5f; 
     norm = clamp01(norm);
-    float s = 1.0f / (1.0f + std::exp(-gamma * (norm - 0.5f)));
+
+    // Sigmoid with midpoint at 0.43 (mid-grey falls around 0.35)
+    float s = 1.0f / (1.0f + std::exp(-gamma * (norm - 0.43f)));
+
     // Apply toe/shoulder soft limiting
     s = toe + (shoulder - toe) * s;
     return clamp01(s);

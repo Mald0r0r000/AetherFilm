@@ -12,6 +12,8 @@ public:
     explicit AetherFilmPlugin(OfxImageEffectHandle handle);
 
     void render         (const OFX::RenderArguments         &args) override;
+    void renderCPU      (const OFX::RenderArguments         &args);
+    void renderMetal    (const OFX::RenderArguments         &args);
     bool isIdentity     (const OFX::IsIdentityArguments     &args,
                          OFX::Clip *&identityClip,
                          double     &identityTime)                 override;

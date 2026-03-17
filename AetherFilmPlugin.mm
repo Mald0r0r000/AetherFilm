@@ -1,4 +1,6 @@
 #include "AetherFilmPlugin.h"
+#import <Metal/Metal.h>
+#import <Foundation/Foundation.h>
 #include <iostream>
 #include <vector>
 
@@ -74,9 +76,21 @@ bool AetherFilmPlugin::isIdentity(const IsIdentityArguments &args,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// render
+// render (Dispatcher)
 // ─────────────────────────────────────────────────────────────────────────────
 void AetherFilmPlugin::render(const RenderArguments &args)
+{
+    if (args.isEnabledMetalRender && args.pMetalCmdQ != nullptr) {
+        renderMetal(args);
+    } else {
+        renderCPU(args);
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// renderCPU
+// ─────────────────────────────────────────────────────────────────────────────
+void AetherFilmPlugin::renderCPU(const RenderArguments &args)
 {
     std::unique_ptr<Image> src(srcClip_->fetchImage(args.time));
     std::unique_ptr<Image> dst(dstClip_->fetchImage(args.time));
@@ -258,4 +272,222 @@ void AetherFilmPlugin::render(const RenderArguments &args)
             dp += dstNC;
         }
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// renderMetal
+// ─────────────────────────────────────────────────────────────────────────────
+struct MetalColorParams {
+    int inputCS;
+    bool textureOnly;
+    int negStock;
+    float exposure;
+    bool enableDev;
+    float pushPull;
+    float interlayer;
+    float bleachNeg;
+    float neutralNeg;
+    bool enablePrint;
+    bool gangPrinter;
+    float ppR;
+    float ppG;
+    float ppB;
+    int printStock;
+    float bleachPrint;
+    float neutralPrint;
+    int displayTgt;
+};
+
+struct MetalHDParams {
+    float toeR, shoulderR, gammaR;
+    float toeG, shoulderG, gammaG;
+    float toeB, shoulderB, gammaB;
+};
+
+void AetherFilmPlugin::renderMetal(const RenderArguments &args)
+{
+    std::unique_ptr<Image> src(srcClip_->fetchImage(args.time));
+    std::unique_ptr<Image> dst(dstClip_->fetchImage(args.time));
+    if (!src || !dst) return;
+
+    id<MTLCommandQueue> commandQueue = (__bridge id<MTLCommandQueue>)args.pMetalCmdQ;
+    if (!commandQueue) return;
+    id<MTLDevice> device = commandQueue.device;
+
+    // Load pipeline states if not loaded yet
+    static id<MTLLibrary> library = nil;
+    static id<MTLComputePipelineState> psoColorScience = nil;
+    static id<MTLComputePipelineState> psoHalExtract = nil;
+    static id<MTLComputePipelineState> psoHalBlurH = nil;
+    static id<MTLComputePipelineState> psoHalBlurV = nil;
+    static id<MTLComputePipelineState> psoHalBlend = nil;
+
+    if (!library) {
+        NSBundle *bundle = [NSBundle bundleWithIdentifier:@"com.maldoror.aetherfilm"];
+        if (bundle) {
+            NSURL *url = [bundle URLForResource:@"AetherFilm" withExtension:@"metallib"];
+            NSError *error = nil;
+            library = [device newLibraryWithURL:url error:&error];
+            if (error) {
+                std::cerr << "Failed to load Metallib: " << error.localizedDescription.UTF8String << std::endl;
+                return;
+            }
+        } else {
+            std::cerr << "AetherFilmOFX bundle not found!" << std::endl;
+            return;
+        }
+
+        NSError *err = nil;
+        id<MTLFunction> funcCol = [library newFunctionWithName:@"kernel_color_science"];
+        psoColorScience = [device newComputePipelineStateWithFunction:funcCol error:&err];
+        
+        id<MTLFunction> funcHExtract = [library newFunctionWithName:@"kernel_halation_extract"];
+        psoHalExtract = [device newComputePipelineStateWithFunction:funcHExtract error:&err];
+
+        id<MTLFunction> funcHBlurH = [library newFunctionWithName:@"kernel_halation_blur_h"];
+        psoHalBlurH = [device newComputePipelineStateWithFunction:funcHBlurH error:&err];
+
+        id<MTLFunction> funcHBlurV = [library newFunctionWithName:@"kernel_halation_blur_v"];
+        psoHalBlurV = [device newComputePipelineStateWithFunction:funcHBlurV error:&err];
+
+        id<MTLFunction> funcHBlend = [library newFunctionWithName:@"kernel_halation_blend"];
+        psoHalBlend = [device newComputePipelineStateWithFunction:funcHBlend error:&err];
+    }
+
+    // Wrap OFX pointers in MTLTexture
+    id<MTLTexture> srcTex = (__bridge id<MTLTexture>)src->getPixelData();
+    id<MTLTexture> dstTex = (__bridge id<MTLTexture>)dst->getPixelData();
+    if (!srcTex || !dstTex) return;
+
+    int w = (int)srcTex.width;
+    int h = (int)srcTex.height;
+
+    // Fetch params
+    MetalColorParams cp;
+    inputCSParam_->getValueAtTime(args.time, cp.inputCS);
+    textureOnlyParam_->getValueAtTime(args.time, cp.textureOnly);
+    negStockParam_->getValueAtTime(args.time, cp.negStock);
+    double e; exposureParam_->getValueAtTime(args.time, e); cp.exposure = (float)e;
+    enableDevParam_->getValueAtTime(args.time, cp.enableDev);
+    double pp; pushPullParam_->getValueAtTime(args.time, pp); cp.pushPull = (float)pp;
+    double il; interlayerParam_->getValueAtTime(args.time, il); cp.interlayer = (float)il;
+    double bn; bleachNegParam_->getValueAtTime(args.time, bn); cp.bleachNeg = (float)bn;
+    double nn; neutralNegParam_->getValueAtTime(args.time, nn); cp.neutralNeg = (float)nn;
+    enablePrintParam_->getValueAtTime(args.time, cp.enablePrint);
+    gangPrinterParam_->getValueAtTime(args.time, cp.gangPrinter);
+    double ppr, ppg, ppb;
+    printerRParam_->getValueAtTime(args.time, ppr); cp.ppR = (float)ppr;
+    printerGParam_->getValueAtTime(args.time, ppg); cp.ppG = (float)ppg;
+    printerBParam_->getValueAtTime(args.time, ppb); cp.ppB = (float)ppb;
+    if (cp.gangPrinter) { cp.ppG = cp.ppR; cp.ppB = cp.ppR; }
+    printStockParam_->getValueAtTime(args.time, cp.printStock);
+    double bp; bleachPrintParam_->getValueAtTime(args.time, bp); cp.bleachPrint = (float)bp;
+    double np; neutralPrintParam_->getValueAtTime(args.time, np); cp.neutralPrint = (float)np;
+    displayTargetParam_->getValueAtTime(args.time, cp.displayTgt);
+
+    bool enableHal; enableHalationParam_->getValueAtTime(args.time, enableHal);
+    int halMode; halationModeParam_->getValueAtTime(args.time, halMode);
+    int halGauge; halationGaugeParam_->getValueAtTime(args.time, halGauge);
+    double hStr; halationStrengthParam_->getValueAtTime(args.time, hStr);
+    double hr, hg, hb; halationColorParam_->getValueAtTime(args.time, hr, hg, hb);
+
+    // Get Stock Params
+    HDParams negHD_c, printHD_c; CrosstalkMatrix ct;
+    switch (cp.negStock) {
+        case kNegKodak250D: negHD_c = getNegParams_Kodak250D(); ct = getCrosstalk_Kodak250D(); break;
+        case kNegKodak500T: negHD_c = getNegParams_Kodak500T(); ct = getCrosstalk_Kodak500T(); break;
+        case kNegFujiEterna500T: negHD_c = getNegParams_FujiEterna500T(); ct = getCrosstalk_FujiEterna500T(); break;
+        case kNegDoubleX: negHD_c = getNegParams_DoubleX(); ct = getCrosstalk_DoubleX(); break;
+        default: negHD_c = getNegParams_Kodak250D(); ct = getCrosstalk_Kodak250D();
+    }
+    switch (cp.printStock) {
+        case kPrint2383: printHD_c = getPrintParams_2383(); break;
+        case kPrint2393: printHD_c = getPrintParams_2393(); break;
+        case kPrintFuji3510: printHD_c = getPrintParams_Fuji3510(); break;
+        default: printHD_c = getPrintParams_2383();
+    }
+    MetalHDParams negHD = {negHD_c.toeR, negHD_c.shoulderR, negHD_c.gammaR, negHD_c.toeG, negHD_c.shoulderG, negHD_c.gammaG, negHD_c.toeB, negHD_c.shoulderB, negHD_c.gammaB};
+    MetalHDParams printHD = {printHD_c.toeR, printHD_c.shoulderR, printHD_c.gammaR, printHD_c.toeG, printHD_c.shoulderG, printHD_c.gammaG, printHD_c.toeB, printHD_c.shoulderB, printHD_c.gammaB};
+
+    id<MTLCommandBuffer> commandBuffer = [commandQueue commandBuffer];
+    id<MTLComputeCommandEncoder> enc = [commandBuffer computeCommandEncoder];
+
+    // Create intermediate texture if halation is enabled
+    id<MTLTexture> intermediateTex = nil;
+    if (enableHal && hStr > 1e-4) {
+        MTLTextureDescriptor *td = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA32Float width:w height:h mipmapped:NO];
+        td.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
+        td.storageMode = MTLStorageModePrivate;
+        intermediateTex = [device newTextureWithDescriptor:td];
+    } else {
+        intermediateTex = dstTex; // No halation needed, just write directly to dst
+    }
+
+    MTLSize threadsPerGrid = MTLSizeMake(w, h, 1);
+    MTLSize threadsPerGroup = MTLSizeMake(16, 16, 1);
+
+    // Pass 1: Color Science
+    [enc setComputePipelineState:psoColorScience];
+    [enc setTexture:srcTex atIndex:0];
+    [enc setTexture:dstTex atIndex:1];
+    [enc setTexture:intermediateTex atIndex:2];
+    [enc setBytes:&cp length:sizeof(cp) atIndex:0];
+    [enc setBytes:&negHD length:sizeof(negHD) atIndex:1];
+    [enc setBytes:&ct length:sizeof(ct) atIndex:2];
+    [enc setBytes:&printHD length:sizeof(printHD) atIndex:3];
+    [enc dispatchThreads:threadsPerGrid threadsPerThreadgroup:threadsPerGroup];
+
+    // Halation passes
+    if (enableHal && hStr > 1e-4) {
+        struct HalationParams { float str; float rad; float tint[3]; float thres; float soft; } hp;
+        hp.str = (float)hStr;
+        hp.rad = gaugeToRadius(halGauge, w, halMode == kHalPrecision);
+        hp.tint[0] = (float)hr; hp.tint[1] = (float)hg; hp.tint[2] = (float)hb;
+        hp.thres = 0.75f; hp.soft = 0.15f;
+
+        MTLTextureDescriptor *td = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA32Float width:w height:h mipmapped:NO];
+        td.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
+        td.storageMode = MTLStorageModePrivate;
+        id<MTLTexture> bloomTex = [device newTextureWithDescriptor:td];
+        id<MTLTexture> blurHTex = [device newTextureWithDescriptor:td];
+        id<MTLTexture> blurVTex = [device newTextureWithDescriptor:td];
+
+        // Ensure reasonable radius to avoid killing the GPU (O(R) compute)
+        int iradius = std::max(1, std::min((int)hp.rad, 128));
+        std::vector<float> kernel_weights = makeGaussianKernel(iradius);
+
+        // Extract
+        [enc setComputePipelineState:psoHalExtract];
+        [enc setTexture:intermediateTex atIndex:0];
+        [enc setTexture:bloomTex atIndex:1];
+        [enc setBytes:&hp length:sizeof(hp) atIndex:0];
+        [enc dispatchThreads:threadsPerGrid threadsPerThreadgroup:threadsPerGroup];
+
+        // Blur H
+        [enc setComputePipelineState:psoHalBlurH];
+        [enc setTexture:bloomTex atIndex:0];
+        [enc setTexture:blurHTex atIndex:1];
+        [enc setBytes:kernel_weights.data() length:kernel_weights.size()*sizeof(float) atIndex:0];
+        [enc setBytes:&iradius length:sizeof(int) atIndex:1];
+        [enc dispatchThreads:threadsPerGrid threadsPerThreadgroup:threadsPerGroup];
+
+        // Blur V
+        [enc setComputePipelineState:psoHalBlurV];
+        [enc setTexture:blurHTex atIndex:0];
+        [enc setTexture:blurVTex atIndex:1];
+        [enc setBytes:kernel_weights.data() length:kernel_weights.size()*sizeof(float) atIndex:0];
+        [enc setBytes:&iradius length:sizeof(int) atIndex:1];
+        [enc dispatchThreads:threadsPerGrid threadsPerThreadgroup:threadsPerGroup];
+
+        // Blend
+        [enc setComputePipelineState:psoHalBlend];
+        [enc setTexture:intermediateTex atIndex:0];
+        [enc setTexture:blurVTex atIndex:1];
+        [enc setTexture:dstTex atIndex:2];
+        [enc setBytes:&hp length:sizeof(hp) atIndex:0];
+        [enc dispatchThreads:threadsPerGrid threadsPerThreadgroup:threadsPerGroup];
+    }
+
+    [enc endEncoding];
+    [commandBuffer commit];
 }
