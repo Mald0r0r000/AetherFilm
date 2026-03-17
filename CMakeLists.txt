@@ -46,7 +46,7 @@ if(APPLE)
         COMMAND ${CMAKE_COMMAND} -E make_directory "${OFX_BUNDLE_DIR}"
         COMMAND ${CMAKE_COMMAND} -E copy
             "$<TARGET_FILE:${PROJECT_NAME}>"
-            "${OFX_BUNDLE_DIR}/${PROJECT_NAME}"
+            "${OFX_BUNDLE_DIR}/${PROJECT_NAME}.ofx"
         COMMAND ${CMAKE_COMMAND} -E copy
             "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist"
             "${OFX_PLIST_DIR}/Info.plist"

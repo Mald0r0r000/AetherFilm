@@ -5,7 +5,7 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>English</string>
     <key>CFBundleExecutable</key>
-    <string>AetherFilmOFX</string>
+    <string>AetherFilmOFX.ofx</string>
     <key>CFBundleGetInfoString</key>
     <string>AetherFilm OFX Plugin</string>
     <key>CFBundleIdentifier</key>
@@ -15,12 +15,14 @@
     <key>CFBundleName</key>
     <string>AetherFilm</string>
     <key>CFBundlePackageType</key>
-    <string>OFXN</string>
+    <string>BNDL</string>
     <key>CFBundleShortVersionString</key>
     <string>1.0</string>
     <key>CFBundleSignature</key>
     <string>????</string>
     <key>CFBundleVersion</key>
     <string>1.0</string>
+    <key>CSResourcesFileMapped</key>
+    <true/>
 </dict>
 </plist>
