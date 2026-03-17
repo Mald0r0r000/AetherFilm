@@ -251,25 +251,19 @@ void AetherFilmProcessor::processImagesMetal()
             }
         }
         
-        id<MTLTexture> srcTex = (__bridge id<MTLTexture>)_srcImg->getPixelData();
-        id<MTLTexture> dstTex = (__bridge id<MTLTexture>)_dstImg->getPixelData();
-        if (!srcTex || !dstTex) {
-            NSLog(@"[AetherFilm] bridge FAILED: src=%p dst=%p", srcTex, dstTex);
+        // Get buffers from OFX images (standard OFX Metal format)
+        id<MTLBuffer> srcBuffer = reinterpret_cast<id<MTLBuffer>>(_srcImg->getPixelData());
+        id<MTLBuffer> dstBuffer = reinterpret_cast<id<MTLBuffer>>(_dstImg->getPixelData());
+        if (!srcBuffer || !dstBuffer) {
+            NSLog(@"[AetherFilm] buffer cast FAILED: src=%p dst=%p", srcBuffer, dstBuffer);
             return;
         }
-        NSLog(@"[AetherFilm] Textures bridged: %lux%lu", (unsigned long)srcTex.width, (unsigned long)srcTex.height);
-
-
-    
-    int w = (int)srcTex.width;
-    int h = (int)srcTex.height;
-    
-    // Create intermediate texture for halation
-    MTLTextureDescriptor *texDesc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA32Float
-                                                                                        width:w height:h mipmapped:NO];
-    texDesc.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
-    texDesc.storageMode = MTLStorageModePrivate;
-    id<MTLTexture> intermediateTex = [device newTextureWithDescriptor:texDesc];
+        
+        const OfxRectI& bounds = _srcImg->getBounds();
+        int w = bounds.x2 - bounds.x1;
+        int h = bounds.y2 - bounds.y1;
+        
+        NSLog(@"[AetherFilm] Buffers OK: %dx%d", w, h);
     
     // Build params struct
     struct MetalColorParams {
@@ -308,16 +302,20 @@ void AetherFilmProcessor::processImagesMetal()
     cp.neutralPrint = neutralPrint_;
     cp.displayTgt = displayTgt_;
     
-    // Encode compute command
+    // Encode compute command using buffers (OFX standard)
     id<MTLCommandBuffer> cmdBuffer = [commandQueue commandBuffer];
     id<MTLComputeCommandEncoder> encoder = [cmdBuffer computeCommandEncoder];
     
-    [encoder setTexture:srcTex atIndex:0];
-    [encoder setTexture:dstTex atIndex:1];
-    [encoder setTexture:intermediateTex atIndex:2];
-    [encoder setBytes:&cp length:sizeof(cp) atIndex:0];
+    // Set buffers (OFX standard: input=buffer(0), output=buffer(8), width=buffer(11), height=buffer(12))
+    [encoder setBuffer:srcBuffer offset:0 atIndex:0];
+    [encoder setBuffer:dstBuffer offset:0 atIndex:8];
+    [encoder setBytes:&w length:sizeof(w) atIndex:11];
+    [encoder setBytes:&h length:sizeof(h) atIndex:12];
     
-    // Set HD params
+    // Set params (buffer 1-4)
+    [encoder setBytes:&cp length:sizeof(cp) atIndex:1];
+    
+    // Set HD params (buffer 2-4)
     struct MetalHDParams {
         float toeR, shoulderR, gammaR;
         float toeG, shoulderG, gammaG;
@@ -334,9 +332,9 @@ void AetherFilmProcessor::processImagesMetal()
                          ct_.m[1][0], ct_.m[1][1], ct_.m[1][2],
                          ct_.m[2][0], ct_.m[2][1], ct_.m[2][2]};
     
-    [encoder setBytes:&mNegHD length:sizeof(mNegHD) atIndex:1];
-    [encoder setBytes:&mPrintHD length:sizeof(mPrintHD) atIndex:2];
+    [encoder setBytes:&mNegHD length:sizeof(mNegHD) atIndex:2];
     [encoder setBytes:&mCt length:sizeof(mCt) atIndex:3];
+    [encoder setBytes:&mPrintHD length:sizeof(mPrintHD) atIndex:4];
     
     [encoder setComputePipelineState:gPsoColorScience];
     

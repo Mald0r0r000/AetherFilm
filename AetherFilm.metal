@@ -181,22 +181,31 @@ inline float halationMask(float luma, float threshold, float softness) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Kernels
+// Kernels - Using buffers (OFX standard) instead of textures
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Main color science kernel using buffers (OFX standard format)
 kernel void kernel_color_science(
-    texture2d<float, access::read> src [[texture(0)]],
-    texture2d<float, access::write> dst [[texture(1)]],
-    texture2d<float, access::write> intermediate [[texture(2)]],
-    constant ColorParams &params [[buffer(0)]],
-    constant HDParams &negHD [[buffer(1)]],
-    constant CrosstalkMatrix &ct [[buffer(2)]],
-    constant HDParams &printHD [[buffer(3)]],
+    constant int& p_Width [[buffer(11)]],
+    constant int& p_Height [[buffer(12)]],
+    const device float* p_Input [[buffer(0)]],
+    device float* p_Output [[buffer(8)]],
+    constant ColorParams &params [[buffer(1)]],
+    constant HDParams &negHD [[buffer(2)]],
+    constant CrosstalkMatrix &ct [[buffer(3)]],
+    constant HDParams &printHD [[buffer(4)]],
     uint2 gid [[thread_position_in_grid]]
 ) {
-    if (gid.x >= src.get_width() || gid.y >= src.get_height()) return;
+    if ((gid.x >= p_Width) || (gid.y >= p_Height)) return;
     
-    float4 px = src.read(gid);
+    const int index = ((gid.y * p_Width) + gid.x) * 4;
+    
+    float4 px;
+    px.r = p_Input[index + 0];
+    px.g = p_Input[index + 1];
+    px.b = p_Input[index + 2];
+    px.a = p_Input[index + 3];
+    
     float3 c = px.rgb;
     
     if (!params.textureOnly) {
@@ -234,8 +243,12 @@ kernel void kernel_color_science(
     }
     
     float4 outPx = float4(c, px.a);
-    dst.write(outPx, gid);
-    intermediate.write(outPx, gid);
+    
+    // Write output to buffer
+    p_Output[index + 0] = outPx.r;
+    p_Output[index + 1] = outPx.g;
+    p_Output[index + 2] = outPx.b;
+    p_Output[index + 3] = outPx.a;
 }
 
 kernel void kernel_halation_extract(
