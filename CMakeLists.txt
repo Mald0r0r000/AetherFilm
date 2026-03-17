@@ -17,6 +17,7 @@ include_directories(
 set(SOURCES
     main.cpp
     AetherFilmPlugin.mm
+    Processor.mm
     openfx/Support/Library/ofxsImageEffect.cpp
     openfx/Support/Library/ofxsInteract.cpp
     openfx/Support/Library/ofxsLog.cpp

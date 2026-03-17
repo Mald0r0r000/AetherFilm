@@ -12,8 +12,6 @@ public:
     explicit AetherFilmPlugin(OfxImageEffectHandle handle);
 
     void render         (const OFX::RenderArguments         &args) override;
-    void renderCPU      (const OFX::RenderArguments         &args);
-    void renderMetal    (const OFX::RenderArguments         &args);
     bool isIdentity     (const OFX::IsIdentityArguments     &args,
                          OFX::Clip *&identityClip,
                          double     &identityTime)                 override;
@@ -59,6 +57,10 @@ private:
 
     // ── Internal ───────────────────────────────────────────────────────────
     HalationProcessor halationProcessor_;
-
-    void processPixel(float3 &pix, double time) const;
+    
+    // Persistent buffers to avoid per-frame allocation
+    std::vector<float> processBuffer_;
+    std::vector<float> halationBuffer_;
+    int lastWidth_ = 0;
+    int lastHeight_ = 0;
 };

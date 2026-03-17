@@ -24,6 +24,9 @@ void AetherFilmPluginFactory::describe(OFX::ImageEffectDescriptor &desc)
     desc.setTemporalClipAccess(false);
     desc.setRenderTwiceAlways(false);
     desc.setSupportsMultipleClipDepths(false);
+    
+    // Advertise Metal render support - must be in describe(), not describeInContext
+    desc.setSupportsMetalRender(true);
 }
 
 void AetherFilmPluginFactory::describeInContext(OFX::ImageEffectDescriptor &desc,

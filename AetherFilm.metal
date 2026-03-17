@@ -87,13 +87,17 @@ inline float hdCurve(float x, float toe, float shoulder, float gamma) {
     // In a real negative, -4 stops = toe, +6 stops = shoulder.
     // Middle grey (0 stops) should sit a bit below the midpoint. 
     float norm = (stops + 4.5f) / 10.5f; 
+    
+    // Clamp norm to avoid extreme extrapolation in shadows/highlights
+    // This prevents color shifts in deep shadows from per-channel toe differences
     norm = saturate(norm);
     
-    // 3. Sigmoid with midpoint at 0.43 (mid-grey falls around 0.35)
-    float s = 1.0f / (1.0f + exp(-gamma * (norm - 0.43f)));
+    // 3. Sigmoid with midpoint at 0.5 (mid-grey falls around 0.33)
+    float s = 1.0f / (1.0f + exp(-gamma * (norm - 0.5f)));
     
     // 4. Soft clip toe and shoulder
     s = toe + (shoulder - toe) * s;
+    // Clamp output to valid density range [0, 1]
     return saturate(s);
 }
 
@@ -121,31 +125,51 @@ inline float3 applyNeutralBlend(float3 stock, float3 lin, float blend) {
     return mix(stock, neutral, blend);
 }
 
+// Invert negative density (negative = 1 - density)
+inline float3 invertNegative(float3 density) {
+    return float3(1.0f - density.r, 1.0f - density.g, 1.0f - density.b);
+}
+
 inline float3 applyBleachBypass(float3 c, float strength) {
     if (strength <= 0.0f) return c;
     float luma = 0.2126f*c.r + 0.7152f*c.g + 0.0722f*c.b;
-    float silverLuma = saturate(luma * (1.0f + 0.5f * strength));
+    float silverLuma = luma * (1.0f + 0.5f * strength);
+    // Don't clamp — preserve HDR
     float desat = strength * 0.6f;
     float3 result = mix(c, float3(silverLuma), desat);
     float contrastMix = strength * 0.4f;
     result += (silverLuma - luma) * contrastMix;
-    return saturate(result);
+    return result; // No clamp — let HDR values through
+}
+
+// Soft clip for HDR highlights — compresses values > threshold smoothly
+// Higher threshold (1.5 = ~+3 stops) to preserve more of the HDR range
+inline float softClip(float x, float threshold = 1.5f) {
+    if (x <= threshold) return x;
+    // Hyperbolic tangent soft shoulder
+    return threshold + (1.0f - threshold) * tanh((x - threshold) / (1.0f - threshold));
 }
 
 inline float3 applyPrinterPoints(float3 c, float ppR, float ppG, float ppB) {
-    float rGain = exp2((ppR - 25.0f) * 0.05f);
-    float gGain = exp2((ppG - 25.0f) * 0.05f);
-    float bGain = exp2((ppB - 25.0f) * 0.05f);
-    return saturate(float3(c.r * rGain, c.g * gGain, c.b * bGain));
+    // Reduced from 0.05 to 0.02 for finer control (≈1/10 stop per point)
+    float rGain = exp2((ppR - 25.0f) * 0.02f);
+    float gGain = exp2((ppG - 25.0f) * 0.02f);
+    float bGain = exp2((ppB - 25.0f) * 0.02f);
+    return float3(c.r * rGain, c.g * gGain, c.b * bGain);
 }
 
 inline float3 applyDisplayGamma(float3 c, int displayTarget) {
-    float gamma = 2.4f;
-    if (displayTarget == 1) gamma = 2.2f;
-    else if (displayTarget == 2) gamma = 2.6f;
-    else if (displayTarget == 3) return c;
-    float invGamma = 1.0f / gamma;
-    return pow(saturate(c), float3(invGamma));
+    // If linear output requested, passthrough
+    if (displayTarget == 3) return c;
+    
+    // For Rec.709/sRGB output, the sigmoid already maps to [0,1] display range
+    // No additional gamma needed - sigmoid output is already display-referred
+    // Only apply soft clip for any values that escaped the sigmoid
+    return float3(
+        min(1.0f, softClip(c.r, 0.95f)),
+        min(1.0f, softClip(c.g, 0.95f)),
+        min(1.0f, softClip(c.b, 0.95f))
+    );
 }
 
 inline float halationMask(float luma, float threshold, float softness) {
@@ -198,6 +222,13 @@ kernel void kernel_color_science(
                 printOut = applyBleachBypass(printOut, params.bleachPrint);
             c = printOut;
         }
+        
+        // If no film processing enabled, apply basic tone mapping sigmoid
+        if (!params.enableDev && !params.enablePrint) {
+            HDParams basicHD = {0.02f, 0.97f, 8.0f, 0.02f, 0.97f, 8.0f, 0.02f, 0.97f, 8.0f};
+            c = applyHDCurve(c, basicHD, 0.0f);
+        }
+        
         c = applyDisplayGamma(c, params.displayTgt);
     }
     

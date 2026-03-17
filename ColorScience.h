@@ -19,6 +19,15 @@ inline float3 lerp3(const float3 &a, const float3 &b, float t) {
 inline float clamp01(float x) { return std::max(0.0f, std::min(1.0f, x)); }
 inline float clampf(float x, float lo, float hi) { return std::max(lo, std::min(hi, x)); }
 
+// Soft clip for HDR highlights — compresses values > threshold smoothly
+// Higher threshold (1.5 = ~+3 stops) to preserve more of the HDR range
+inline float softClip(float x, float threshold = 1.5f) {
+    if (x <= threshold) return x;
+    // Hyperbolic tangent soft shoulder - asymptotically approaches threshold + (1-threshold)
+    // For threshold=1.5, max output ~2.0
+    return threshold + (1.0f - threshold) * std::tanh((x - threshold) / (1.0f - threshold));
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Input colour space → linear scene
 // Simple log-to-linear transforms. Replace with precise primaries later.
@@ -89,6 +98,11 @@ struct HDParams {
     float toeB, shoulderB, gammaB;
 };
 
+// Invert negative density (negative = 1 - density)
+inline float3 invertNegative(float3 density) {
+    return { 1.0f - density.r, 1.0f - density.g, 1.0f - density.b };
+}
+
 // Smooth sigmoid — maps [0,1] input to [0,1] density
 // toe < 0.5 < shoulder, gamma controls mid-slope
 inline float hdCurve(float x, float toe, float shoulder, float gamma)
@@ -100,14 +114,18 @@ inline float hdCurve(float x, float toe, float shoulder, float gamma)
     // In a real negative, -4 stops = toe, +6 stops = shoulder.
     // Middle grey (0 stops) should sit a bit below the midpoint. 
     float norm = (stops + 4.5f) / 10.5f; 
-    norm = clamp01(norm);
+    
+    // Clamp norm to avoid extreme extrapolation in shadows/highlights
+    // This prevents color shifts in deep shadows from per-channel toe differences
+    norm = std::max(0.0f, std::min(1.0f, norm));
 
-    // Sigmoid with midpoint at 0.43 (mid-grey falls around 0.35)
-    float s = 1.0f / (1.0f + std::exp(-gamma * (norm - 0.43f)));
+    // Sigmoid with midpoint at 0.5 (mid-grey falls around 0.33)
+    float s = 1.0f / (1.0f + std::exp(-gamma * (norm - 0.5f)));
 
     // Apply toe/shoulder soft limiting
     s = toe + (shoulder - toe) * s;
-    return clamp01(s);
+    // Clamp output to valid density range [0, 1]
+    return std::max(0.0f, std::min(1.0f, s));
 }
 
 // Apply H&D curve per channel with push/pull modulation
@@ -173,7 +191,7 @@ inline float3 applyBleachBypass(float3 c, float strength)
     float luma = 0.2126f*c.r + 0.7152f*c.g + 0.0722f*c.b;
     // Silver retention lifts contrast via a gentle S on luma
     float silverLuma = luma * (1.0f + 0.5f * strength);
-    silverLuma = clamp01(silverLuma);
+    // Don't clamp — preserve HDR
     // Blend original chroma with desaturated version
     float desat = strength * 0.6f;
     float3 grey = { silverLuma, silverLuma, silverLuma };
@@ -183,24 +201,24 @@ inline float3 applyBleachBypass(float3 c, float strength)
     result.r = result.r + (silverLuma - luma) * contrastMix;
     result.g = result.g + (silverLuma - luma) * contrastMix;
     result.b = result.b + (silverLuma - luma) * contrastMix;
-    return { clamp01(result.r), clamp01(result.g), clamp01(result.b) };
+    return result; // No clamp — let HDR values through
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Printer Points
-// 25 = neutral. Each unit ≈ 1/3 stop of coloured printer light.
+// 25 = neutral. Each unit ≈ 1/6 stop of coloured printer light (reduced for finer control).
 // ─────────────────────────────────────────────────────────────────────────────
 inline float3 applyPrinterPoints(float3 c, float ppR, float ppG, float ppB)
 {
     // Convert printer points to exposure multiplier
-    // Each point = ~0.025 log-exposure units (industry convention)
+    // Reduced from 0.05 to 0.02 for finer control (≈1/10 stop per point)
     auto ppToGain = [](float pp) -> float {
-        return std::pow(2.0f, (pp - 25.0f) * 0.05f);
+        return std::pow(2.0f, (pp - 25.0f) * 0.02f);
     };
     return {
-        clamp01(c.r * ppToGain(ppR)),
-        clamp01(c.g * ppToGain(ppG)),
-        clamp01(c.b * ppToGain(ppB))
+        c.r * ppToGain(ppR),
+        c.g * ppToGain(ppG),
+        c.b * ppToGain(ppB)
     };
 }
 
@@ -209,16 +227,16 @@ inline float3 applyPrinterPoints(float3 c, float ppR, float ppG, float ppB)
 // ─────────────────────────────────────────────────────────────────────────────
 inline float3 applyDisplayGamma(float3 c, int displayTarget)
 {
-    float gamma = 2.4f;
-    if (displayTarget == 1) gamma = 2.2f;
-    else if (displayTarget == 2) gamma = 2.6f;
-    else if (displayTarget == 3) return c; // linear
-
-    float invGamma = 1.0f / gamma;
+    // If linear output requested, passthrough
+    if (displayTarget == 3) return c;
+    
+    // For Rec.709/sRGB output, the sigmoid already maps to [0,1] display range
+    // No additional gamma needed - sigmoid output is already display-referred
+    // Only apply soft clip for any values that escaped the sigmoid
     return {
-        std::pow(clamp01(c.r), invGamma),
-        std::pow(clamp01(c.g), invGamma),
-        std::pow(clamp01(c.b), invGamma)
+        std::min(1.0f, softClip(c.r, 0.95f)),
+        std::min(1.0f, softClip(c.g, 0.95f)),
+        std::min(1.0f, softClip(c.b, 0.95f))
     };
 }
 
