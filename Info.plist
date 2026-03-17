@@ -5,11 +5,11 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>English</string>
     <key>CFBundleExecutable</key>
-    <string>AetherFilmOFX.ofx</string>
+    <string>AetherFilmOFX</string>
     <key>CFBundleGetInfoString</key>
     <string>AetherFilm OFX Plugin</string>
     <key>CFBundleIdentifier</key>
-    <string>com.maldoror.AetherFilm</string>
+    <string>com.aether.filmofx</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
