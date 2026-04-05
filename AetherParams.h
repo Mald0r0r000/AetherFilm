@@ -26,13 +26,6 @@
 #define kParamNeutralPrint      "neutralPrint"
 #define kParamDisplayTarget     "displayTarget"
 
-// ── Halation ───────────────────────────────────────────────────────────────
-#define kParamEnableHalation    "enableHalation"
-#define kParamHalationMode      "halationMode"
-#define kParamHalationGauge     "halationGauge"
-#define kParamHalationStrength  "halationStrength"
-#define kParamHalationColor     "halationColor"
-
 // ── Enum values ────────────────────────────────────────────────────────────
 enum NegStock {
     kNegKodak250D = 0,
@@ -60,15 +53,4 @@ enum DisplayTarget {
     kDisplayRec709_22,
     kDisplayP3,
     kDisplayLinear
-};
-
-enum HalationMode {
-    kHalPerformance = 0,
-    kHalPrecision
-};
-
-enum HalationGauge {
-    kHal35mm = 0,
-    kHal16mm,
-    kHalSuper8
 };

@@ -35,14 +35,6 @@ struct ColorParams {
     int displayTgt;
 };
 
-struct HalationParams {
-    float strength;
-    float radius;
-    float3 tint;
-    float threshold;
-    float softness;
-};
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Color Science Functions
 // ─────────────────────────────────────────────────────────────────────────────
@@ -173,13 +165,6 @@ inline float3 applyDisplayGamma(float3 c, int displayTarget) {
     );
 }
 
-inline float halationMask(float luma, float threshold, float softness) {
-    float knee = luma - threshold;
-    if (knee <= 0.0f) return 0.0f;
-    if (knee < softness) return (knee * knee) / (2.0f * softness);
-    return knee - softness * 0.5f;
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Kernels - Using buffers (OFX standard) instead of textures
 // ─────────────────────────────────────────────────────────────────────────────
@@ -249,77 +234,4 @@ kernel void kernel_color_science(
     p_Output[index + 1] = outPx.g;
     p_Output[index + 2] = outPx.b;
     p_Output[index + 3] = outPx.a;
-}
-
-kernel void kernel_halation_extract(
-    texture2d<float, access::read> src [[texture(0)]],
-    texture2d<float, access::write> bloom [[texture(1)]],
-    constant HalationParams &params [[buffer(0)]],
-    uint2 gid [[thread_position_in_grid]]
-) {
-    if (gid.x >= src.get_width() || gid.y >= src.get_height()) return;
-    
-    float3 c = src.read(gid).rgb;
-    float luma = 0.2126f*c.r + 0.7152f*c.g + 0.0722f*c.b;
-    float mask = halationMask(luma, params.threshold, params.softness);
-    
-    bloom.write(float4(c * mask, 0.0f), gid);
-}
-
-kernel void kernel_halation_blur_h(
-    texture2d<float, access::read> src [[texture(0)]],
-    texture2d<float, access::write> dst [[texture(1)]],
-    constant float *kernel_weights [[buffer(0)]],
-    constant int &radius [[buffer(1)]],
-    uint2 gid [[thread_position_in_grid]]
-) {
-    uint w = src.get_width();
-    uint h = src.get_height();
-    if (gid.x >= w || gid.y >= h) return;
-    
-    float3 sum = float3(0.0f);
-    int ksize = 2 * radius + 1;
-    for (int k = 0; k < ksize; ++k) {
-        int sx = clamp((int)gid.x + k - radius, 0, (int)w - 1);
-        sum += src.read(uint2(sx, gid.y)).rgb * kernel_weights[k];
-    }
-    dst.write(float4(sum, 0.0f), gid);
-}
-
-kernel void kernel_halation_blur_v(
-    texture2d<float, access::read> src [[texture(0)]],
-    texture2d<float, access::write> dst [[texture(1)]],
-    constant float *kernel_weights [[buffer(0)]],
-    constant int &radius [[buffer(1)]],
-    uint2 gid [[thread_position_in_grid]]
-) {
-    uint w = src.get_width();
-    uint h = src.get_height();
-    if (gid.x >= w || gid.y >= h) return;
-    
-    float3 sum = float3(0.0f);
-    int ksize = 2 * radius + 1;
-    for (int k = 0; k < ksize; ++k) {
-        int sy = clamp((int)gid.y + k - radius, 0, (int)h - 1);
-        sum += src.read(uint2(gid.x, sy)).rgb * kernel_weights[k];
-    }
-    dst.write(float4(sum, 0.0f), gid);
-}
-
-kernel void kernel_halation_blend(
-    texture2d<float, access::read> base_img [[texture(0)]],
-    texture2d<float, access::read> bloom_img [[texture(1)]],
-    texture2d<float, access::write> dst [[texture(2)]],
-    constant HalationParams &params [[buffer(0)]],
-    uint2 gid [[thread_position_in_grid]]
-) {
-    if (gid.x >= base_img.get_width() || gid.y >= base_img.get_height()) return;
-    
-    float4 base = base_img.read(gid);
-    float3 b = bloom_img.read(gid).rgb;
-    
-    float bloomLuma = 0.2126f*b.r + 0.7152f*b.g + 0.0722f*b.b;
-    float3 tintAdd = bloomLuma * params.tint * params.strength;
-    
-    dst.write(float4(base.rgb + tintAdd, base.a), gid);
 }

@@ -37,12 +37,6 @@ AetherFilmPlugin::AetherFilmPlugin(OfxImageEffectHandle handle)
     bleachPrintParam_    = fetchDoubleParam (kParamBleachPrint);
     neutralPrintParam_   = fetchDoubleParam (kParamNeutralPrint);
     displayTargetParam_  = fetchChoiceParam (kParamDisplayTarget);
-
-    enableHalationParam_ = fetchBooleanParam(kParamEnableHalation);
-    halationModeParam_   = fetchChoiceParam (kParamHalationMode);
-    halationGaugeParam_  = fetchChoiceParam (kParamHalationGauge);
-    halationStrengthParam_= fetchDoubleParam(kParamHalationStrength);
-    halationColorParam_  = fetchRGBParam    (kParamHalationColor);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -62,13 +56,12 @@ bool AetherFilmPlugin::isIdentity(const IsIdentityArguments &args,
                                    Clip *&identityClip,
                                    double &identityTime)
 {
-    bool textureOnly, enableDev, enablePrint, enableHal;
+    bool textureOnly, enableDev, enablePrint;
     textureOnlyParam_->getValueAtTime(args.time, textureOnly);
     enableDevParam_->getValueAtTime(args.time, enableDev);
     enablePrintParam_->getValueAtTime(args.time, enablePrint);
-    enableHalationParam_->getValueAtTime(args.time, enableHal);
 
-    if (!textureOnly && !enableDev && !enablePrint && !enableHal) {
+    if (!textureOnly && !enableDev && !enablePrint) {
         identityClip = srcClip_;
         identityTime = args.time;
         return true;
@@ -121,16 +114,6 @@ void AetherFilmPlugin::render(const RenderArguments &args)
                         enableDev, (float)pushPull, (float)interlayer, (float)bleachNeg, (float)neutralNeg,
                         enablePrint, (float)ppR, (float)ppG, (float)ppB, printStock,
                         (float)bleachPrint, (float)neutralPrint, displayTgt);
-    
-    // Halation params
-    bool enableHal;    enableHalationParam_->getValueAtTime(args.time, enableHal);
-    int halMode;       halationModeParam_->getValueAtTime(args.time, halMode);
-    int halGauge;      halationGaugeParam_->getValueAtTime(args.time, halGauge);
-    double halStrength; halationStrengthParam_->getValueAtTime(args.time, halStrength);
-    double halR, halG, halB;
-    halationColorParam_->getValueAtTime(args.time, halR, halG, halB);
-    float3 halColor = {(float)halR, (float)halG, (float)halB};
-    processor.setHalation(enableHal, halMode, halGauge, (float)halStrength, halColor);
     
     // Set source and destination images
     std::unique_ptr<Image> src(srcClip_->fetchImage(args.time));

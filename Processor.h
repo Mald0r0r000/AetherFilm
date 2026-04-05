@@ -14,8 +14,6 @@ public:
                    bool enablePrint, float ppR, float ppG, float ppB, int printStock,
                    float bleachPrint, float neutralPrint, int displayTgt);
     
-    void setHalation(bool enable, int mode, int gauge, float strength, float3 color);
-    
     // Set source image
     void setSrcImg(OFX::Image *img) { _srcImg = img; }
     
@@ -39,21 +37,10 @@ private:
     float bleachPrint_, neutralPrint_;
     int displayTgt_;
     
-    // Halation
-    bool enableHal_;
-    int halMode_, halGauge_;
-    float halStrength_;
-    float3 halColor_;
-    
     // Stock params
     HDParams negHD_, printHD_;
     CrosstalkMatrix ct_;
     
     // Source image (dst is _dstImg from base class)
     OFX::Image *_srcImg;
-    
-    // Intermediate buffers for halation
-    std::vector<float> processBuffer_;
-    std::vector<float> halationBuffer_;
-    int width_, height_;
 };

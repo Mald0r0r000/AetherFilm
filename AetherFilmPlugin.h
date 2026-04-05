@@ -3,7 +3,6 @@
 #include "ofxsMultiThread.h"
 #include "AetherParams.h"
 #include "ColorScience.h"
-#include "Halation.h"
 #include <mutex>
 
 class AetherFilmPlugin : public OFX::ImageEffect
@@ -48,19 +47,5 @@ private:
     OFX::DoubleParam  *neutralPrintParam_;
     OFX::ChoiceParam  *displayTargetParam_;
 
-    // ── Halation params ────────────────────────────────────────────────────
-    OFX::BooleanParam *enableHalationParam_;
-    OFX::ChoiceParam  *halationModeParam_;
-    OFX::ChoiceParam  *halationGaugeParam_;
-    OFX::DoubleParam  *halationStrengthParam_;
-    OFX::RGBParam     *halationColorParam_;
-
     // ── Internal ───────────────────────────────────────────────────────────
-    HalationProcessor halationProcessor_;
-    
-    // Persistent buffers to avoid per-frame allocation
-    std::vector<float> processBuffer_;
-    std::vector<float> halationBuffer_;
-    int lastWidth_ = 0;
-    int lastHeight_ = 0;
 };

@@ -168,39 +168,6 @@ void AetherFilmPluginFactory::describeInContext(OFX::ImageEffectDescriptor &desc
         dt->appendOption("Linear");
         dt->setDefault(0); dt->setAnimates(false); dt->setParent(*g);
     }
-
-    // ── Halation group ─────────────────────────────────────────────────────
-    {
-        OFX::GroupParamDescriptor *g = desc.defineGroupParam("grpHalation");
-        g->setLabel("Halation"); g->setOpen(false);
-
-        auto *eh = desc.defineBooleanParam(kParamEnableHalation);
-        eh->setLabel("Enable halation"); eh->setDefault(true);
-        eh->setAnimates(false); eh->setParent(*g);
-
-        auto *hm = desc.defineChoiceParam(kParamHalationMode);
-        hm->setLabel("Mode");
-        hm->appendOption("Performance");
-        hm->appendOption("Precision");
-        hm->setDefault(0); hm->setAnimates(false); hm->setParent(*g);
-
-        auto *hg = desc.defineChoiceParam(kParamHalationGauge);
-        hg->setLabel("Film gauge");
-        hg->appendOption("35mm");
-        hg->appendOption("16mm");
-        hg->appendOption("Super 8");
-        hg->setDefault(0); hg->setAnimates(false); hg->setParent(*g);
-
-        auto *hs = desc.defineDoubleParam(kParamHalationStrength);
-        hs->setLabel("Strength");
-        hs->setRange(0.0, 2.0); hs->setDisplayRange(0.0, 2.0);
-        hs->setDefault(1.0); hs->setParent(*g);
-
-        auto *hc = desc.defineRGBParam(kParamHalationColor);
-        hc->setLabel("Tint");
-        hc->setHint("Halation bloom colour (typically deep red).");
-        hc->setDefault(0.85, 0.15, 0.05); hc->setParent(*g);
-    }
 }
 
 OFX::ImageEffect *AetherFilmPluginFactory::createInstance(OfxImageEffectHandle h,

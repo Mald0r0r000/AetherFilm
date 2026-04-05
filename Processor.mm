@@ -1,6 +1,8 @@
 #include "Processor.h"
 #include "AetherFilmPlugin.h"
 #include <cstdio>
+#include <vector>
+#include <cmath>
 #import <Metal/Metal.h>
 #import <Foundation/Foundation.h>
 #import <dlfcn.h>
@@ -72,15 +74,6 @@ void AetherFilmProcessor::setParams(int inputCS, bool textureOnly, int negStock,
         case kPrintFuji3510: printHD_ = getPrintParams_Fuji3510(); break;
         default: printHD_ = getPrintParams_2383();
     }
-}
-
-void AetherFilmProcessor::setHalation(bool enable, int mode, int gauge, float strength, float3 color)
-{
-    enableHal_ = enable;
-    halMode_ = mode;
-    halGauge_ = gauge;
-    halStrength_ = strength;
-    halColor_ = color;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -173,10 +166,6 @@ void AetherFilmProcessor::multiThreadProcessImages(OfxRectI window)
 // Global Metal states
 static id<MTLLibrary> gLibrary = nil;
 static id<MTLComputePipelineState> gPsoColorScience = nil;
-static id<MTLComputePipelineState> gPsoHalExtract = nil;
-static id<MTLComputePipelineState> gPsoHalBlurH = nil;
-static id<MTLComputePipelineState> gPsoHalBlurV = nil;
-static id<MTLComputePipelineState> gPsoHalBlend = nil;
 static std::mutex gInitMutex;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -184,16 +173,21 @@ static std::mutex gInitMutex;
 // ─────────────────────────────────────────────────────────────────────────────
 void AetherFilmProcessor::processImagesMetal()
 {
+    FILE* logFile = fopen("/tmp/aetherfilm_render.log", "a");
+    if (logFile) {
+        fprintf(logFile, "[AetherFilm] processImagesMetal entry, _isEnabledMetalRender=%d\n", _isEnabledMetalRender);
+    }
+    
     @autoreleasepool {
-        NSLog(@"[AetherFilm] processImagesMetal entry");
-        
         if (!_srcImg || !_dstImg) {
-            NSLog(@"[AetherFilm] src or dst NULL");
+            if (logFile) { fprintf(logFile, "[AetherFilm] src or dst NULL\n"); }
+            if (logFile) fclose(logFile);
             return;
         }
         
         if (!_pMetalCmdQ) {
-            NSLog(@"[AetherFilm] _pMetalCmdQ is NULL");
+            if (logFile) { fprintf(logFile, "[AetherFilm] _pMetalCmdQ is NULL\n"); }
+            if (logFile) fclose(logFile);
             return;
         }
 
@@ -343,9 +337,10 @@ void AetherFilmProcessor::processImagesMetal()
     [encoder dispatchThreadgroups:threadGroups threadsPerThreadgroup:threadGroupSize];
     
     [encoder endEncoding];
+    
     [cmdBuffer commit];
     [cmdBuffer waitUntilCompleted];
     
-    NSLog(@"[AetherFilm] Metal render completed!");
+    if (logFile) { fprintf(logFile, "[AetherFilm] Metal render completed!\n"); fclose(logFile); }
     }
 }
